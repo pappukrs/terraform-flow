@@ -2,7 +2,7 @@
 # Format: <your-suffix>-terraform-state
 terraform {
   backend "s3" {
-    bucket         = "tf-state-2026-terraform-state"  # ← Update this after running bootstrap
+    bucket         = "pappu-2026-terraform-state"  # ← Update this after running bootstrap
     key            = "terraform.tfstate"
     region         = "ap-south-1"
     encrypt        = true

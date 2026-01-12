@@ -13,7 +13,7 @@ variable "aws_region" {
 variable "key_name" {
   description = "EC2 key pair name"
   type        = string
-  default     = "demo-key"
+  default     = "node-ec2-key"
 }
 
 variable "state_bucket_suffix" {
