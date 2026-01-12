@@ -1,0 +1,51 @@
+name: Infrastructure Up
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "yes" to confirm infrastructure creation'
+        required: true
+        default: ''
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  terraform-up:
+    name: Create Infrastructure
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'yes' }}
+    defaults:
+      run:
+        working-directory: ./infra
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get EC2 IP
+        run: |
+          echo "## Infrastructure Created! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**EC2 Public IP:** \`$(terraform output -raw ec2_ip)\`" >> $GITHUB_STEP_SUMMARY
