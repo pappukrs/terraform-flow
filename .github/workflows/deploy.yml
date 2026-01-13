@@ -45,7 +45,7 @@ jobs:
       - name: Create SSH key file
         run: |
           mkdir -p ~/.ssh
-          printf "%s\n" "${{ secrets.EC2_KEY }}" > ~/.ssh/ec2_key.pem
+          echo "${{ secrets.EC2_KEY_B64 }}" | base64 -d > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
           ssh-keyscan -H ${{ steps.get_ip.outputs.ec2_ip }} >> ~/.ssh/known_hosts
 
