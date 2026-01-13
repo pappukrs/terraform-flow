@@ -53,7 +53,7 @@ jobs:
         with:
           host: ${{ steps.get_ip.outputs.ec2_ip }}
           username: ubuntu
-          key_path: ~/.ssh/ec2_key.pem
+          key_path: /github/home/.ssh/ec2_key.pem
           source: app.tar
           target: /home/ubuntu
 
@@ -62,7 +62,7 @@ jobs:
         with:
           host: ${{ steps.get_ip.outputs.ec2_ip }}
           username: ubuntu
-          key_path: ~/.ssh/ec2_key.pem
+          key_path: /github/home/.ssh/ec2_key.pem
           script: |
             docker load < app.tar
             docker stop demo || true

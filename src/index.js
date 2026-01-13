@@ -9,4 +9,4 @@ app.get("/deploy", (req, res) => {
     res.send("deployed by CI/CD + Terraform demo working some changes 🚀");
 });
 
-app.listen(3000, () => console.log("App running"));
+app.listen(3000, () => console.log("App running in background"));
