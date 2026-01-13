@@ -42,12 +42,18 @@ jobs:
       - name: Save image
         run: docker save demo-app:latest > app.tar
 
+      - name: Create SSH key file
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+
       - name: Copy image to EC2
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ steps.get_ip.outputs.ec2_ip }}
           username: ubuntu
-          key: ${{ secrets.EC2_KEY }}
+          key_path: ~/.ssh/ec2_key.pem
           source: app.tar
           target: /home/ubuntu
 
@@ -56,7 +62,7 @@ jobs:
         with:
           host: ${{ steps.get_ip.outputs.ec2_ip }}
           username: ubuntu
-          key: ${{ secrets.EC2_KEY }}
+          key_path: ~/.ssh/ec2_key.pem
           script: |
             docker load < app.tar
             docker stop demo || true
