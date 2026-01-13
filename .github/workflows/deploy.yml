@@ -45,29 +45,22 @@ jobs:
       - name: Create SSH key file
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_KEY }}" > ~/.ssh/ec2_key.pem
+          printf "%s\n" "${{ secrets.EC2_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
+          ssh-keyscan -H ${{ steps.get_ip.outputs.ec2_ip }} >> ~/.ssh/known_hosts
 
       - name: Copy image to EC2
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ steps.get_ip.outputs.ec2_ip }}
-          username: ubuntu
-          key_path: /github/home/.ssh/ec2_key.pem
-          source: app.tar
-          target: /home/ubuntu
+        run: |
+          scp -i ~/.ssh/ec2_key.pem app.tar ubuntu@${{ steps.get_ip.outputs.ec2_ip }}:/home/ubuntu/app.tar
 
-      - name: Run container
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ steps.get_ip.outputs.ec2_ip }}
-          username: ubuntu
-          key_path: /github/home/.ssh/ec2_key.pem
-          script: |
+      - name: Run container on EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ steps.get_ip.outputs.ec2_ip }} << 'EOF'
             docker load < app.tar
             docker stop demo || true
             docker rm demo || true
             docker run -d -p 80:3000 --name demo demo-app:latest
+          EOF
 
       - name: Summary
         run: |
