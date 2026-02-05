@@ -76,6 +76,22 @@ jobs:
           echo "::group::Describe Nodes"
           kubectl describe nodes
           echo "::endgroup::"
+          
+          echo "Waiting for at least one node to be Ready..."
+          # This loop waits until at least one node is in Ready state
+          # We cannot use --all if there are 0 nodes, so we check count first
+          for i in {1..30}; do
+             NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
+             if [ "$NODE_COUNT" -gt "0" ]; then
+                echo "Nodes found: $NODE_COUNT"
+                break
+             fi
+             echo "No nodes yet, waiting..."
+             sleep 10
+          done
+          
+          # Now wait for readiness
+          kubectl wait --for=condition=Ready nodes --all --timeout=150s || echo "WARNING: Nodes not ready yet"
 
       - name: Install AWS Load Balancer Controller
         run: |
@@ -86,7 +102,8 @@ jobs:
             --approve
 
           # 2. Create IAM Policy (Idempotent check)
-          curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.0/docs/install/iam_policy.json
+          # Update to main/v3 policy
+          curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
           
           POLICY_ARN=$(aws iam list-policies --query 'Policies[?PolicyName==`AWSLoadBalancerControllerIAMPolicy`].Arn' --output text)
           
@@ -98,6 +115,7 @@ jobs:
               --query 'Policy.Arn' --output text)
           else
             echo "IAM Policy already exists: $POLICY_ARN"
+            # Optional: Update the policy version if needed, but for now we assume it's okay or user deletes it
           fi
           
           # 3. Create Service Account (Idempotent)
@@ -126,6 +144,15 @@ jobs:
           echo "Waiting for AWS Load Balancer Controller to be ready..."
           if ! kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=300s; then
             echo "❌ Controller failed to start! Debugging info:"
+            
+            echo "::group::Cluster Events (Last 50)"
+            kubectl get events -A --sort-by='.lastTimestamp' | tail -n 50
+            echo "::endgroup::"
+
+            echo "::group::Describe ReplicaSet"
+            kubectl describe replicaset -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+            echo "::endgroup::"
+            
             echo "::group::Describe Deployment"
             kubectl describe deployment aws-load-balancer-controller -n kube-system
             echo "::endgroup::"
