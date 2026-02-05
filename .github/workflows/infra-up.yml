@@ -103,8 +103,8 @@ jobs:
             --approve
 
           # 2. Create IAM Policy (Idempotent check)
-          # Update to main/v3 policy
-          curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+          # Use v2.7.0 policy - it has all required permissions
+          curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.0/docs/install/iam_policy.json
           
           POLICY_ARN=$(aws iam list-policies --query 'Policies[?PolicyName==`AWSLoadBalancerControllerIAMPolicy`].Arn' --output text)
           
