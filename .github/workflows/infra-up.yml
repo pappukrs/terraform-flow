@@ -91,6 +91,17 @@ jobs:
             --set serviceAccount.create=false \
             --set serviceAccount.name=aws-load-balancer-controller || true
 
+      - name: Wait for Load Balancer Controller
+        run: |
+          echo "Waiting for AWS Load Balancer Controller to be ready..."
+          # Wait for the deployment to handle the pod creation
+          sleep 10
+          kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=300s
+          
+          # Additional check to ensure webhook service endpoints are registered
+          sleep 10
+          kubectl get endpoints -n kube-system aws-load-balancer-webhook-service || true
+
       - name: Verify cluster
         run: |
           kubectl get nodes
