@@ -69,7 +69,18 @@ jobs:
           echo "Waiting 30 seconds for AWS Load Balancer Controller to clean up ALB..."
           sleep 30
 
+      - name: Clean ECR Repository
+        working-directory: ./infra
+        run: |
+          echo "Cleaning ECR repository images..."
+          # Get all image digests and delete them
+          aws ecr batch-delete-image \
+            --repository-name demo-app \
+            --region ${{ env.AWS_REGION }} \
+            --image-ids "$(aws ecr list-images --repository-name demo-app --region ${{ env.AWS_REGION }} --query 'imageIds[*]' --output json)" || echo "No images or repo doesn't exist"
+
       - name: Terraform Destroy
+        working-directory: ./infra
         run: terraform destroy -auto-approve
 
       - name: Summary
