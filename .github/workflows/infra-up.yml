@@ -118,13 +118,15 @@ jobs:
             # Optional: Update the policy version if needed, but for now we assume it's okay or user deletes it
           fi
           
-          # 3. Create Service Account (Idempotent: Delete then Create)
-          echo "Cleaning up any existing ServiceAccount..."
-          eksctl delete iamserviceaccount \
-            --cluster=${{ steps.outputs.outputs.cluster_name }} \
-            --namespace=kube-system \
-            --name=aws-load-balancer-controller \
-            --region=${{ env.AWS_REGION }} || true
+          # 3. Create Service Account (Clean Slate Strategy)
+          # eksctl can get confused if K8s SA is missing but CF Stack exists.
+          STACK_NAME="eksctl-${{ steps.outputs.outputs.cluster_name }}-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+          echo "Force cleaning CloudFormation stack: $STACK_NAME"
+          
+          aws cloudformation delete-stack --stack-name $STACK_NAME --region ${{ env.AWS_REGION }}
+          
+          echo "Waiting for stack deletion to complete..."
+          aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME --region ${{ env.AWS_REGION }} || echo "Stack did not exist or already deleted"
 
           echo "Creating NEW ServiceAccount..."
           eksctl create iamserviceaccount \
