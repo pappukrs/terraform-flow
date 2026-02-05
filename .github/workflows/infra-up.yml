@@ -118,7 +118,15 @@ jobs:
             # Optional: Update the policy version if needed, but for now we assume it's okay or user deletes it
           fi
           
-          # 3. Create Service Account (Idempotent)
+          # 3. Create Service Account (Idempotent: Delete then Create)
+          echo "Cleaning up any existing ServiceAccount..."
+          eksctl delete iamserviceaccount \
+            --cluster=${{ steps.outputs.outputs.cluster_name }} \
+            --namespace=kube-system \
+            --name=aws-load-balancer-controller \
+            --region=${{ env.AWS_REGION }} || true
+
+          echo "Creating NEW ServiceAccount..."
           eksctl create iamserviceaccount \
             --cluster=${{ steps.outputs.outputs.cluster_name }} \
             --namespace=kube-system \
@@ -128,6 +136,14 @@ jobs:
             --approve \
             --region=${{ env.AWS_REGION }} \
             --override-existing-serviceaccounts
+
+          # Verify SA creation
+          echo "Verifying ServiceAccount existence..."
+          if ! kubectl get sa aws-load-balancer-controller -n kube-system; then
+             echo "❌ ServiceAccount was not created! eksctl failed silently?"
+             exit 1
+          fi
+          echo "✅ ServiceAccount verified."
 
           # 4. Install/Upgrade Helm Chart
           helm repo add eks https://aws.github.io/eks-charts
