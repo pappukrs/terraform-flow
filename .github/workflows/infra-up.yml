@@ -168,7 +168,8 @@ jobs:
             -n kube-system \
             --set clusterName=${{ steps.outputs.outputs.cluster_name }} \
             --set serviceAccount.create=false \
-            --set serviceAccount.name=aws-load-balancer-controller
+            --set serviceAccount.name=aws-load-balancer-controller \
+            --set vpcId=${{ steps.outputs.outputs.vpc_id }}
 
       - name: Wait for Load Balancer Controller
         run: |
