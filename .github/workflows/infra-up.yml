@@ -123,6 +123,12 @@ jobs:
           STACK_NAME="eksctl-${{ steps.outputs.outputs.cluster_name }}-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
           echo "Force cleaning CloudFormation stack: $STACK_NAME"
           
+          # Disable termination protection first
+          aws cloudformation update-termination-protection \
+            --no-enable-termination-protection \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }} || echo "Stack doesn't exist or protection already disabled"
+          
           aws cloudformation delete-stack --stack-name $STACK_NAME --region ${{ env.AWS_REGION }}
           
           echo "Waiting for stack deletion to complete..."
