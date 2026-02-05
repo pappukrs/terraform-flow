@@ -4,24 +4,41 @@
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ System Architecture
+
+This diagram illustrates the full flow from the end-user (Client) to the application running inside the EKS cluster, as well as the underlying CI/CD pipeline.
 
 ```mermaid
 graph TD
-    A[Local Code] -->|git push| B(GitHub Repository)
-    B -->|Workflow Dispatch| C{Infrastructure Bootstrap}
-    C -->|Creates| D[S3: Terraform State]
-    C -->|Creates| D2[DynamoDB: State Locking]
-    C -->|Creates| E[ECR: Container Registry]
-    B -->|Workflow Dispatch| F[Infra Up Workflow]
-    F -->|Terraform Apply| G[EKS Cluster + VPC]
-    F -->|Helm Install| H[AWS Load Balancer Controller]
-    B -->|git push main| I[Deploy Workflow]
-    I -->|Docker Build/Push| E
-    I -->|kubectl apply| G
-    G -->|Creates| J[ALB: Application Load Balancer]
-    J -->|Routes| K[Pods: Node.js App]
+    %% Client Side
+    Client["🌐 Client (Browser)"] -->|HTTPS/HTTP| ALB["☁️ AWS Application Load Balancer"]
+
+    %% AWS Infrastructure
+    subgraph "AWS EKS Cluster (Private VCP)"
+        ALB -->|Port 80| Ingress["🎟️ K8s Ingress (ALB Controller)"]
+        Ingress -->|NodePort 30080| Service["🔌 K8s Service"]
+        Service -->|TargetPort 3000| Pods["📦 App Pods (Node.js)"]
+    end
+
+    %% External Repositories
+    subgraph "CI/CD Pipeline (GitHub)"
+        GHA["🐙 GitHub Actions"] -->|Build & Push| ECR["🐳 AWS ECR (Registy)"]
+        GHA -->|Terraform Apply| EKS["☸️ AWS EKS Cluster"]
+        GHA -->|Kubectl Apply| App["🚀 Application"]
+    end
+
+    %% Connections
+    ECR -.->|Pull Image| Pods
+    EKS ---|Hosts| Pods
 ```
+
+### 🌊 Request Flow: From Client to Code
+1.  **Client Request:** A user enters the ALB URL in their browser.
+2.  **AWS ALB:** The Load Balancer receives the traffic and checks the Ingress rules.
+3.  **K8s Ingress:** The `aws-load-balancer-controller` has configured the ALB to route traffic to the EKS nodes.
+4.  **K8s Service:** Traffic hits the `demo-app-service` on `NodePort 30080`.
+5.  **App Pods:** The Service forwards the traffic to the available Pods on `targetPort 3000`.
+6.  **Response:** The Node.js app processes the request and sends the response back through the same path.
 
 ---
 
@@ -101,6 +118,30 @@ Add these to your repository secrets:
 3. It deletes Ingress (ALB) first, then destroys Terraform resources.
 
 ---
+
+## 🧠 Challenges Faced & Solutions
+
+During the migration from EC2 to EKS, several critical hurdles were overcome:
+
+### 1. Subnet Tagging for ALB Controller
+*   **Problem:** The AWS Load Balancer Controller failed to discover subnets for the ALB.
+*   **Reason:** EKS requires specific tags on subnets to identify where to place public and private load balancers.
+*   **Solution:** Added `kubernetes.io/role/elb = 1` to public subnets and `kubernetes.io/role/internal-elb = 1` to private subnets in Terraform.
+
+### 2. OIDC Provider & IAM Roles for Service Accounts (IRSA)
+*   **Problem:** The ALB Controller couldn't create resources in AWS due to "Access Denied".
+*   **Reason:** Kubernetes pods need IAM permissions to interact with AWS APIs.
+*   **Solution:** Configured an OIDC provider for the cluster and created an IAM Role with a trust policy allowing the controller's ServiceAccount to assume it.
+
+### 3. ECR Image Pull Secrets
+*   **Problem:** Pods were stuck in `ImagePullBackOff`.
+*   **Reason:** Nodes in the EKS cluster didn't have permission to pull images from the private ECR repository.
+*   **Solution:** Attached the `AmazonEC2ContainerRegistryReadOnly` policy to the EKS Node Group IAM Role.
+
+### 4. VPC DNS Support
+*   **Problem:** CoreDNS pods failing or services unable to resolve internal names.
+*   **Reason:** The custom VPC lacked internal DNS resolution.
+*   **Solution:** Enabled `enable_dns_hostnames` and `enable_dns_support` in the `aws_vpc` Terraform resource.
 
 ## 🛠 Troubleshooting
 
