@@ -67,6 +67,16 @@ jobs:
           sudo mv /tmp/eksctl /usr/local/bin
           eksctl version
 
+      - name: Debug Nodes
+        run: |
+          echo "::group::Get Nodes"
+          kubectl get nodes -o wide
+          echo "::endgroup::"
+          
+          echo "::group::Describe Nodes"
+          kubectl describe nodes
+          echo "::endgroup::"
+
       - name: Install AWS Load Balancer Controller
         run: |
           # 1. Associate OIDC Provider (Safe to run multiple times)
