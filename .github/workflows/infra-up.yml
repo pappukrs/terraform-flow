@@ -52,6 +52,7 @@ jobs:
           echo "cluster_endpoint=$(terraform output -raw eks_cluster_endpoint)" >> $GITHUB_OUTPUT
           echo "ecr_url=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
           echo "kubectl_config=$(terraform output -raw configure_kubectl)" >> $GITHUB_OUTPUT
+          echo "vpc_id=$(terraform output -raw vpc_id)" >> $GITHUB_OUTPUT
 
       - name: Configure kubectl
         run: |
