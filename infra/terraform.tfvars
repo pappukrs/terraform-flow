@@ -1,1 +1,2 @@
-key_name = "node-ec2-key"
+aws_region = "ap-south-1"
+cluster_name = "demo-app-cluster"

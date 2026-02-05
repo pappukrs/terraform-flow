@@ -9,8 +9,11 @@ env:
 
 jobs:
   deploy:
-    name: Deploy Application
+    name: Deploy to EKS
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -31,39 +34,65 @@ jobs:
         working-directory: ./infra
         run: terraform init
 
-      - name: Get EC2 IP
-        id: get_ip
+      - name: Get Terraform Outputs
+        id: tf-outputs
         working-directory: ./infra
-        run: echo "ec2_ip=$(terraform output -raw ec2_ip)" >> $GITHUB_OUTPUT
-
-      - name: Build Docker image
-        run: docker build -t demo-app:latest .
-
-      - name: Save image
-        run: docker save demo-app:latest > app.tar
-
-      - name: Create SSH key file
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_KEY_B64 }}" | base64 -d > ~/.ssh/ec2_key.pem
-          chmod 600 ~/.ssh/ec2_key.pem
-          ssh-keyscan -H ${{ steps.get_ip.outputs.ec2_ip }} >> ~/.ssh/known_hosts
+          echo "ecr_url=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+          echo "cluster_name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
+          echo "cluster_endpoint=$(terraform output -raw eks_cluster_endpoint)" >> $GITHUB_OUTPUT
 
-      - name: Copy image to EC2
-        run: |
-          scp -i ~/.ssh/ec2_key.pem app.tar ubuntu@${{ steps.get_ip.outputs.ec2_ip }}:/home/ubuntu/app.tar
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Run container on EC2
+      - name: Build and Push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.tf-outputs.outputs.ecr_url }}
+          IMAGE_TAG: latest # In prod, use ${{ github.sha }}
         run: |
-          ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ steps.get_ip.outputs.ec2_ip }} << 'EOF'
-            docker load < app.tar
-            docker stop demo || true
-            docker rm demo || true
-            docker run -d -p 80:3000 --name demo demo-app:latest
-          EOF
+          # The ECR URL from terraform includes the repo name, but docker tag needs specific format
+          # simpler: docker build -t $ECR_REPOSITORY:latest .
+          docker build -t ${{ steps.tf-outputs.outputs.ecr_url }}:latest .
+          docker push ${{ steps.tf-outputs.outputs.ecr_url }}:latest
 
-      - name: Summary
+      - name: Update kubeconfig
         run: |
-          echo "## Deployment Complete! ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "App deployed to: http://${{ steps.get_ip.outputs.ec2_ip }}" >> $GITHUB_STEP_SUMMARY
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ steps.tf-outputs.outputs.cluster_name }}
+
+      - name: Deploy to EKS
+        run: |
+          # Replace variables in k8s manifests
+          export ECR_REPOSITORY_URL=${{ steps.tf-outputs.outputs.ecr_url }}
+          
+          # Use envsubst to replace variables in deployment.yaml
+          envsubst < k8s/deployment.yaml > k8s/deployment-final.yaml
+          
+          # Apply manifests
+          kubectl apply -f k8s/deployment-final.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Wait for Rollout
+        run: |
+          kubectl rollout status deployment/demo-app
+
+      - name: Get Load Balancer URL
+        run: |
+          echo "Waiting for Ingress specific IP..."
+          # It takes a moment for the ALB to be provisioned and assigned to ingress
+          sleep 10
+          kubectl get ingress demo-app-ingress
+          
+          LB_HOSTNAME=$(kubectl get ingress demo-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          
+          if [ -z "$LB_HOSTNAME" ]; then
+            echo "Load Balancer not ready yet. Check AWS console or runs 'kubectl get ingress' later."
+            echo "URL=Pending" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Deployment Complete! ✅" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "App deployed to: http://$LB_HOSTNAME" >> $GITHUB_STEP_SUMMARY
+            echo "Note: It may take a few minutes for the ALB to become active and DNS to propagate." >> $GITHUB_STEP_SUMMARY
+          fi

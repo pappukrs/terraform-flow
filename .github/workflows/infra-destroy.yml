@@ -16,6 +16,7 @@ jobs:
     name: Destroy Infrastructure
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.confirm == 'destroy' }}
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: ./infra
@@ -38,6 +39,30 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
+      - name: Get Cluster Name (if exists)
+        id: cluster
+        run: |
+          # Try to get cluster name, assume it works if state exists
+          if terraform output -raw eks_cluster_name > /dev/null 2>&1; then
+            echo "name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Cleanup Kubernetes Resources
+        if: steps.cluster.outputs.exists == 'true'
+        run: |
+          echo "Connecting to cluster to delete Ingress (ALB cleanup)..."
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ steps.cluster.outputs.name }}
+          
+          # Delete Ingress explicitly to trigger ALB deletion by the controller
+          kubectl delete ingress demo-app-ingress --ignore-not-found=true
+          
+          # Wait for ALB to be deleted (controller processes deletion)
+          echo "Waiting 30 seconds for AWS Load Balancer Controller to clean up ALB..."
+          sleep 30
+
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
 
@@ -45,4 +70,4 @@ jobs:
         run: |
           echo "## Infrastructure Destroyed! 🗑️" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All AWS resources have been successfully destroyed." >> $GITHUB_STEP_SUMMARY
+          echo "All AWS resources (EKS, VPC, ECR) have been successfully destroyed." >> $GITHUB_STEP_SUMMARY
