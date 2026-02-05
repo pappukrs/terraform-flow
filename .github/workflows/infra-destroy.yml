@@ -41,11 +41,17 @@ jobs:
 
       - name: Get Cluster Name (if exists)
         id: cluster
+        working-directory: ./infra
         run: |
-          # Try to get cluster name, assume it works if state exists
-          if terraform output -raw eks_cluster_name > /dev/null 2>&1; then
-            echo "name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
-            echo "exists=true" >> $GITHUB_OUTPUT
+          # Check if EKS cluster exists in state
+          if terraform state list | grep -q 'aws_eks_cluster.eks_cluster'; then
+            CLUSTER_NAME=$(terraform output -raw eks_cluster_name 2>/dev/null || echo "")
+            if [ -n "$CLUSTER_NAME" ]; then
+              echo "name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+              echo "exists=true" >> $GITHUB_OUTPUT
+            else
+              echo "exists=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
