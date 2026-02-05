@@ -147,7 +147,14 @@ jobs:
           fi
           echo "✅ ServiceAccount verified."
 
-          # 4. Install/Upgrade Helm Chart
+          # 4. Cleanup & Install Helm Chart
+          echo "Cleaning up old controller installation..."
+          helm uninstall aws-load-balancer-controller -n kube-system || true
+          kubectl delete deployment aws-load-balancer-controller -n kube-system --ignore-not-found
+          kubectl delete mutatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
+          kubectl delete validatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
+          
+          echo "Installing Helm Chart..."
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
           
