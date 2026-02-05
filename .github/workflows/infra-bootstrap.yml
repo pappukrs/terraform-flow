@@ -21,6 +21,8 @@ jobs:
     name: Create State Backend and ECR
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.confirm == 'bootstrap' }}
+    permissions:
+      contents: write  # SQL: Required to push changes to backend.tf
 
     env:
       BUCKET_NAME: ${{ github.event.inputs.bucket_suffix }}-terraform-state
@@ -28,6 +30,11 @@ jobs:
       ECR_REPO_NAME: demo-app
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }} # Explicitly use token for push
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -82,6 +89,31 @@ jobs:
             --output text)
           echo "ecr_url=$ECR_URL" >> $GITHUB_OUTPUT
 
+      - name: Update backend.tf automatically
+        run: |
+          # Use sed to replace the placeholder or the existing bucket name
+          # We look for bucket = "..."
+          sed -i 's/bucket *= *"[^"]*"/bucket         = "${{ env.BUCKET_NAME }}"/' infra/backend.tf
+          
+          # Show the change
+          cat infra/backend.tf
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          
+          git add infra/backend.tf
+          
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to backend.tf"
+          else
+            git commit -m "chore: auto-update terraform backend bucket to ${{ env.BUCKET_NAME }}"
+            git push origin HEAD:${{ github.ref }}
+            echo "✅ Successfully updated backend.tf in the repository!"
+          fi
+
       - name: Summary
         run: |
           echo "## Bootstrap Complete! 🎉" >> $GITHUB_STEP_SUMMARY
@@ -90,7 +122,5 @@ jobs:
           echo "**DynamoDB Table:** \`${{ env.TABLE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**ECR Repository:** \`${{ steps.ecr_url.outputs.ecr_url }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⚠️ **IMPORTANT:** Update \`infra/backend.tf\` with this bucket name:" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`hcl" >> $GITHUB_STEP_SUMMARY
-          echo "bucket = \"${{ env.BUCKET_NAME }}\"" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **backend.tf has been automatically updated!**" >> $GITHUB_STEP_SUMMARY
+          echo "You can now proceed to run the 'Infrastructure Up' workflow." >> $GITHUB_STEP_SUMMARY
